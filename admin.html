@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menu Builder • QR Digital Menu</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container row between">
+      <div>
+        <a class="breadcrumb" href="./index.html">← Home</a>
+        <h1>Menu Builder</h1>
+        <p class="subtitle">Add categories and items. Save, export, and share.</p>
+      </div>
+      <nav class="toolbar">
+        <button id="newMenuBtn" class="btn">New</button>
+        <button id="saveBtn" class="btn primary">Save</button>
+        <button id="exportBtn" class="btn">Export JSON</button>
+        <label class="file-btn">
+          <input id="importFile" type="file" accept="application/json" hidden>
+          <span class="btn">Import JSON</span>
+        </label>
+        <button id="shareBtn" class="btn success">Share / QR</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container builder">
+    <section class="restaurant-meta card">
+      <h2>Restaurant</h2>
+      <div class="grid">
+        <label>
+          <span>Name</span>
+          <input id="restaurantName" type="text" placeholder="e.g., Sunrise Bistro">
+        </label>
+        <label>
+          <span>Description</span>
+          <input id="restaurantDesc" type="text" placeholder="Optional blurb (shown on menu)">
+        </label>
+      </div>
+    </section>
+
+    <section id="categories" class="categories"></section>
+
+    <div class="actions">
+      <button id="addCategoryBtn" class="btn">+ Add Category</button>
+    </div>
+
+    <dialog id="shareDialog" class="share-dialog">
+      <form method="dialog">
+        <h3>Share your menu</h3>
+        <p class="muted">Anyone with the link can view your menu.</p>
+        <div class="share-row">
+          <input id="shareUrl" type="text" readonly>
+          <button id="copyLinkBtn" class="btn" type="button">Copy</button>
+          <a id="openLinkBtn" class="btn" target="_blank" rel="noopener">Open</a>
+        </div>
+        <div id="qr" class="qr"></div>
+        <menu class="dialog-actions">
+          <button class="btn" value="cancel">Close</button>
+        </menu>
+      </form>
+    </dialog>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <small>Your data stays in your browser unless you share a link.</small>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" integrity="sha512-9tK3k4d3o4UUJx4dA3Yw0tQO+9n0qO2bQ2S5G5m8XvX1t1cJ5qVQy0mQb5Kxw2b2wE9m1m3Q9p8bQ6T2m6j+2Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-M1rWQqk4E2x9A3l2uZrQ+Qm0s2Q2C4U1M2bHqz9zq2j6sQFZ0rQ0YlP0eQvQHc0g2O2bQ1hM4fZQ1g3z+8a3JYQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="./app.js"></script>
+  <script>
+    const categoriesEl = document.getElementById('categories');
+    const restaurantNameEl = document.getElementById('restaurantName');
+    const restaurantDescEl = document.getElementById('restaurantDesc');
+
+    function emptyCategory() {
+      return { id: App.generateId('cat'), name: 'New Category', items: [] };
+    }
+
+    function emptyItem() {
+      return { id: App.generateId('item'), name: 'New Item', description: '', price: '' };
+    }
+
+    function render() {
+      const data = App.getMenu();
+      restaurantNameEl.value = data.restaurant.name || '';
+      restaurantDescEl.value = data.restaurant.description || '';
+
+      categoriesEl.innerHTML = '';
+      data.categories.forEach(cat => {
+        const section = document.createElement('section');
+        section.className = 'card category';
+        section.dataset.id = cat.id;
+        section.innerHTML = `
+          <div class="category-header">
+            <input class="cat-name" value="${App.escape(cat.name)}" />
+            <div class="category-actions">
+              <button class="btn btn-text add-item">+ Item</button>
+              <button class="btn btn-text danger delete-cat">Delete</button>
+            </div>
+          </div>
+          <div class="items"></div>
+        `;
+
+        const itemsEl = section.querySelector('.items');
+        cat.items.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'item-row';
+          row.dataset.id = item.id;
+          row.innerHTML = `
+            <input class="item-name" placeholder="Name" value="${App.escape(item.name)}" />
+            <input class="item-desc" placeholder="Description" value="${App.escape(item.description)}" />
+            <input class="item-price" placeholder="Price" value="${App.escape(item.price)}" />
+            <button class="btn btn-text danger delete-item">✕</button>
+          `;
+          itemsEl.appendChild(row);
+        });
+
+        section.querySelector('.add-item').addEventListener('click', () => {
+          cat.items.push(emptyItem());
+          App.setMenu(data);
+          render();
+        });
+        section.querySelector('.delete-cat').addEventListener('click', () => {
+          App.confirm('Delete category and all its items?') && App.removeCategory(cat.id);
+          render();
+        });
+
+        section.addEventListener('input', (e) => {
+          if (e.target.classList.contains('cat-name')) {
+            cat.name = e.target.value;
+          }
+          if (e.target.classList.contains('item-name') || e.target.classList.contains('item-desc') || e.target.classList.contains('item-price')) {
+            const row = e.target.closest('.item-row');
+            const item = cat.items.find(i => i.id === row.dataset.id);
+            item.name = row.querySelector('.item-name').value;
+            item.description = row.querySelector('.item-desc').value;
+            item.price = row.querySelector('.item-price').value;
+          }
+          App.setMenu(data);
+        });
+
+        section.addEventListener('click', (e) => {
+          if (e.target.classList.contains('delete-item')) {
+            const row = e.target.closest('.item-row');
+            cat.items = cat.items.filter(i => i.id !== row.dataset.id);
+            App.setMenu(data);
+            render();
+          }
+        });
+
+        categoriesEl.appendChild(section);
+      });
+    }
+
+    document.getElementById('addCategoryBtn').addEventListener('click', () => {
+      const data = App.getMenu();
+      data.categories.push(emptyCategory());
+      App.setMenu(data);
+      render();
+    });
+
+    document.getElementById('newMenuBtn').addEventListener('click', () => {
+      if (App.confirm('Start a new empty menu? This clears current work.')) {
+        App.setMenu(App.defaultMenu());
+        render();
+      }
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const data = App.getMenu();
+      data.restaurant.name = restaurantNameEl.value;
+      data.restaurant.description = restaurantDescEl.value;
+      App.setMenu(data);
+      App.toast('Saved');
+    });
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      const data = App.getMenu();
+      App.downloadJson(data, 'menu.json');
+    });
+
+    document.getElementById('importFile').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const json = await file.text();
+        const data = JSON.parse(json);
+        App.setMenu(data);
+        render();
+        App.toast('Imported');
+      } catch (err) {
+        App.alert('Invalid JSON file');
+      } finally {
+        e.target.value = '';
+      }
+    });
+
+    const shareDialog = document.getElementById('shareDialog');
+    const shareUrlInput = document.getElementById('shareUrl');
+    const openLinkBtn = document.getElementById('openLinkBtn');
+    const copyLinkBtn = document.getElementById('copyLinkBtn');
+    const qrContainer = document.getElementById('qr');
+
+    document.getElementById('shareBtn').addEventListener('click', () => {
+      const data = App.getMenu();
+      data.restaurant.name = restaurantNameEl.value;
+      data.restaurant.description = restaurantDescEl.value;
+      const url = App.buildShareUrl(data);
+      shareUrlInput.value = url;
+      openLinkBtn.href = url;
+      qrContainer.innerHTML = '';
+      new QRCode(qrContainer, { text: url, width: 200, height: 200 });
+      shareDialog.showModal();
+    });
+
+    copyLinkBtn.addEventListener('click', async () => {
+      if (!shareUrlInput.value) return;
+      try {
+        await navigator.clipboard.writeText(shareUrlInput.value);
+        App.toast('Link copied');
+      } catch (err) {
+        shareUrlInput.select();
+        document.execCommand('copy');
+        App.toast('Link copied');
+      }
+    });
+
+    // Initial state
+    if (!App.hasMenu()) {
+      App.setMenu(App.defaultMenu());
+    }
+    render();
+  </script>
+</body>
+</html>
+
+

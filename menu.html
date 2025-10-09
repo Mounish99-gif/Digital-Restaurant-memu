@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menu • QR Digital Menu</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <meta name="color-scheme" content="light dark">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container row between">
+      <div>
+        <a class="breadcrumb" href="./index.html">← Home</a>
+        <h1 id="restaurantTitle">Menu</h1>
+        <p id="restaurantSubtitle" class="subtitle"></p>
+      </div>
+      <nav class="toolbar">
+        <label class="file-btn">
+          <input id="uploadFile" type="file" accept="application/json" hidden>
+          <span class="btn">Open JSON</span>
+        </label>
+        <button id="printBtn" class="btn">Print</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container menu">
+    <section id="menuContent"></section>
+  </main>
+
+  <footer class="site-footer print-hide">
+    <div class="container">
+      <small>Tip: Save this page to your home screen for offline access.</small>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" integrity="sha512-9tK3k4d3o4UUJx4dA3Yw0tQO+9n0qO2bQ2S5G5m8XvX1t1cJ5qVQy0mQb5Kxw2b2wE9m1m3Q9p8bQ6T2m6j+2Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="./app.js"></script>
+  <script>
+    const contentEl = document.getElementById('menuContent');
+    const titleEl = document.getElementById('restaurantTitle');
+    const subtitleEl = document.getElementById('restaurantSubtitle');
+
+    function render(data) {
+      titleEl.textContent = data.restaurant.name || 'Menu';
+      subtitleEl.textContent = data.restaurant.description || '';
+      contentEl.innerHTML = '';
+
+      data.categories.forEach(cat => {
+        if (!cat.items || cat.items.length === 0) return;
+        const section = document.createElement('section');
+        section.className = 'menu-category';
+        section.innerHTML = `<h2>${App.escape(cat.name)}</h2>`;
+        const list = document.createElement('div');
+        list.className = 'menu-items';
+        cat.items.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'menu-item';
+          row.innerHTML = `
+            <div class="menu-item-main">
+              <div class="menu-item-name">${App.escape(item.name)}</div>
+              <div class="menu-item-desc">${App.escape(item.description)}</div>
+            </div>
+            <div class="menu-item-price">${App.escape(item.price)}</div>
+          `;
+          list.appendChild(row);
+        });
+        section.appendChild(list);
+        contentEl.appendChild(section);
+      });
+    }
+
+    document.getElementById('uploadFile').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const json = await file.text();
+        const data = JSON.parse(json);
+        render(data);
+      } catch (err) {
+        App.alert('Invalid JSON file');
+      } finally {
+        e.target.value = '';
+      }
+    });
+
+    document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+    // Load from URL param if present, else from local storage
+    const dataParam = App.getParam('data');
+    if (dataParam) {
+      try {
+        const json = LZString.decompressFromEncodedURIComponent(dataParam);
+        const data = JSON.parse(json);
+        render(data);
+      } catch (err) {
+        App.alert('Invalid share link');
+      }
+    } else if (App.hasMenu()) {
+      render(App.getMenu());
+    } else {
+      render(App.defaultMenu());
+    }
+  </script>
+</body>
+</html>
+
+
